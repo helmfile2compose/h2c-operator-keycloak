@@ -16,7 +16,7 @@ import secrets
 import string
 import sys
 
-from helmfile2compose import ConvertResult, _apply_replacements
+from helmfile2compose import ConvertResult, apply_replacements
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -159,7 +159,7 @@ def _rewrite_realm_urls(obj, replacements):
     """Apply replacements in all string values."""
     if isinstance(obj, str):
         if replacements:
-            return _apply_replacements(obj, replacements)
+            return apply_replacements(obj, replacements)
         return obj
     if isinstance(obj, dict):
         return {k: _rewrite_realm_urls(v, replacements) for k, v in obj.items()}
