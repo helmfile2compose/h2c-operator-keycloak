@@ -16,7 +16,7 @@ import secrets
 import string
 import sys
 
-from helmfile2compose import ConvertResult, rewrite_k8s_dns, _apply_replacements
+from helmfile2compose import ConvertResult, _apply_replacements
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -152,12 +152,11 @@ def _mount_secret(sec_name, ctx):
 
 
 def _rewrite_realm_urls(obj, replacements):
-    """Rewrite K8s DNS and apply replacements in all string values."""
+    """Apply replacements in all string values."""
     if isinstance(obj, str):
-        rewritten, _ = rewrite_k8s_dns(obj)
         if replacements:
-            rewritten = _apply_replacements(rewritten, replacements)
-        return rewritten
+            return _apply_replacements(obj, replacements)
+        return obj
     if isinstance(obj, dict):
         return {k: _rewrite_realm_urls(v, replacements) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -267,9 +266,10 @@ def _build_http_env(spec):
         env["KC_HTTP_PORT"] = str(http["httpPort"])
     if http.get("httpsPort"):
         env["KC_HTTPS_PORT"] = str(http["httpsPort"])
-    mgmt = spec.get("httpManagement", {})
-    if mgmt.get("port"):
-        env["KC_HTTP_MANAGEMENT_PORT"] = str(mgmt["port"])
+    # The K8s Keycloak Operator always enables the management interface
+    # (default port 9000). The CR may override it via httpManagement.port.
+    mgmt_port = spec.get("httpManagement", {}).get("port", 9000)
+    env["KC_HTTP_MANAGEMENT_PORT"] = str(mgmt_port)
 
     hostname = spec.get("hostname", {})
     if hostname.get("hostname"):
@@ -340,6 +340,10 @@ def _build_env(spec, ctx, kc_name="keycloak"):
     env.update(_build_db_env(spec.get("db", {}), ctx))
     env.update(_build_http_env(spec))
     env["KC_CACHE"] = "local"  # compose = single instance, no clustering
+    # The K8s Keycloak Operator enables these implicitly; Keycloak needs
+    # them to activate the management interface (separate port for metrics).
+    env.setdefault("KC_HEALTH_ENABLED", "true")
+    env.setdefault("KC_METRICS_ENABLED", "true")
     env.update(_build_options_env(spec, ctx, kc_name))
     return env
 
@@ -416,6 +420,59 @@ class KeycloakConverter:
             service["command"] = cmd
 
             services[name] = service
+
+            # Register in services_by_selector so later operators (e.g.
+            # servicemonitor) can discover this service by label matching.
+            # In K8s the Keycloak Operator creates the Service at runtime;
+            # here we replicate what it would look like.
+            svc_ports = []
+            tls_enabled = bool(tls_secret)
+            if tls_enabled:
+                https_port = int(env.get("KC_HTTPS_PORT", 8443))
+                svc_ports.append({"name": "https", "port": https_port,
+                                  "targetPort": https_port})
+            http_enabled = env.get("KC_HTTP_ENABLED", "false") == "true"
+            if http_enabled or not tls_enabled:
+                http_port = int(env.get("KC_HTTP_PORT", 8080))
+                svc_ports.append({"name": "http", "port": http_port,
+                                  "targetPort": http_port})
+            if "KC_HTTP_MANAGEMENT_PORT" in env:
+                mgmt_port = int(env["KC_HTTP_MANAGEMENT_PORT"])
+                svc_ports.append({"name": "management", "port": mgmt_port,
+                                  "targetPort": mgmt_port})
+            else:
+                # No dedicated management port — metrics served on main
+                # listener. Map "management" to the main port so
+                # ServiceMonitors referencing port "management" resolve.
+                main_port = (int(env.get("KC_HTTPS_PORT", 8443)) if tls_enabled
+                             else int(env.get("KC_HTTP_PORT", 8080)))
+                svc_ports.append({"name": "management", "port": main_port,
+                                  "targetPort": main_port})
+            ns = m.get("metadata", {}).get("namespace", "")
+            ctx.services_by_selector[name] = {
+                "name": name,
+                "namespace": ns,
+                "selector": {
+                    "app.kubernetes.io/instance": name,
+                },
+                "type": "ClusterIP",
+                "ports": svc_ports,
+            }
+
+            # The K8s Keycloak Operator creates a Service named
+            # "<cr-name>-service" at runtime. Register it in both
+            # alias_map and services_by_selector so _build_network_aliases
+            # generates FQDN aliases for it on the compose service.
+            k8s_svc_name = f"{name}-service"
+            ctx.alias_map[k8s_svc_name] = name
+            ctx.services_by_selector[k8s_svc_name] = {
+                "name": k8s_svc_name,
+                "namespace": ns,
+                "selector": {"app.kubernetes.io/instance": name},
+                "type": "ClusterIP",
+                "ports": svc_ports,
+            }
+
             print(f"  keycloak: generated service '{name}'",
                   file=sys.stderr)
 

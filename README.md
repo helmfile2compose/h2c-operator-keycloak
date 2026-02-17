@@ -21,15 +21,17 @@ Replaces the Keycloak Operator's reconciliation logic with a direct compose serv
 - Maps `spec.db` to `KC_DB_*` env vars (host, port, credentials from referenced Secrets)
 - Maps `spec.http`, `spec.hostname`, `spec.proxy` to corresponding `KC_*` env vars
 - Forces `KC_CACHE=local` (compose = single instance, no Infinispan clustering)
+- Enables health + metrics (`KC_HEALTH_ENABLED`, `KC_METRICS_ENABLED`) and management port (default 9000)
 - Mounts TLS secrets for HTTPS (`spec.http.tlsSecret`) as PEM files
 - Processes `spec.unsupported.podTemplate.spec` for additional volume mounts (ConfigMaps and Secrets, e.g. CA trust bundles)
 - Resolves `spec.features`, `spec.additionalOptions`, and pod-level env vars
 - Generates bootstrap admin credentials if `spec.bootstrapAdmin` is absent (written to `secrets/<name>-initial-admin/`, reused across runs)
+- Registers namespace and K8s Service alias (`<name>-service`) in `ctx.services_by_selector` and `ctx.alias_map` for network alias generation (FQDN resolution in compose DNS)
 
 **KeycloakRealmImport CR:**
 - Writes realm definitions as JSON files under `configmaps/<keycloak-name>-realms/`
 - Resolves `${PLACEHOLDER}` values from referenced K8s Secrets
-- Rewrites K8s DNS names and applies configured string replacements in realm data
+- Applies configured string replacements in realm data
 - Skips master realm import (preserves Keycloak defaults)
 - Adds `--import-realm` to the Keycloak start command
 
@@ -39,7 +41,7 @@ Replaces the Keycloak Operator's reconciliation logic with a direct compose serv
 
 ## Dependencies
 
-None. Uses stdlib only (`base64`, `json`, `os`, `secrets`, `string`, `sys`). Imports `ConvertResult`, `rewrite_k8s_dns`, and `_apply_replacements` from `helmfile2compose`.
+None. Uses stdlib only (`base64`, `json`, `os`, `secrets`, `string`, `sys`). Imports `ConvertResult` and `_apply_replacements` from `helmfile2compose`.
 
 ## Usage
 
