@@ -1,4 +1,4 @@
-# h2c-operator-keycloak
+# h2c-provider-keycloak
 
 ![vibe coded](https://img.shields.io/badge/vibe-coded-ff69b4)
 ![python 3](https://img.shields.io/badge/python-3-3776AB)
@@ -15,7 +15,7 @@ Keycloak CRD converter for [helmfile2compose](https://github.com/helmfile2compos
 
 ## What it does
 
-Replaces the Keycloak Operator's reconciliation logic with a direct compose service. The K8s operator Deployment itself is ignored (K8s-only); this operator generates the Keycloak server container directly from the CR spec.
+Replaces the Keycloak Operator's reconciliation logic with a direct compose service. The K8s operator Deployment itself is ignored (K8s-only); this provider generates the Keycloak server container directly from the CR spec.
 
 **Keycloak CR:**
 - Maps `spec.db` to `KC_DB_*` env vars (host, port, credentials from referenced Secrets)
@@ -51,10 +51,10 @@ Via h2c-manager (recommended):
 python3 h2c-manager.py keycloak
 ```
 
-Manual (pass the operator directory directly):
+Manual (pass the extension directory directly):
 
 ```bash
-python3 helmfile2compose.py --extensions-dir ./h2c-operator-keycloak --helmfile-dir ~/my-platform -e local --output-dir .
+python3 helmfile2compose.py --extensions-dir ./h2c-provider-keycloak --helmfile-dir ~/my-platform -e local --output-dir .
 ```
 
 ## License
