@@ -16,7 +16,7 @@ import secrets
 import string
 import sys
 
-from helmfile2compose import ConvertResult, apply_replacements
+from helmfile2compose import ConvertResult, Provider, apply_replacements
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -389,15 +389,16 @@ def _build_service_ports(env, tls_enabled):
 
 # ---- converter class -------------------------------------------------------
 
-class KeycloakConverter:
+class KeycloakProvider(Provider):
     """Convert Keycloak and KeycloakRealmImport CRDs to compose services.
 
     KeycloakRealmImport is indexed first (kinds list order = call order),
     then Keycloak processes them and produces compose services.
     """
 
+    name = "keycloak"
     kinds = ["KeycloakRealmImport", "Keycloak"]
-    priority = 50  # after cert-manager/trust-manager if present (uses their output when available)
+    priority = 500  # after cert-manager/trust-manager if present (uses their output when available)
 
     def __init__(self):
         self._realm_imports = {}   # keycloakCRName → [manifest]
